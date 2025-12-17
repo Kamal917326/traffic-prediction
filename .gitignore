@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+.env
+
+# Model weights (Large files)
+*.pth
+*.h5
+*.pkl
+
+# Dataset
+dataset/
+
+# IDE
+.vscode/
+.idea/
+
+# Streamlit
+.streamlit/
+
+# Temporary
+temp/
+*.log

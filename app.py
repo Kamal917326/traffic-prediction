@@ -1,0 +1,374 @@
+import streamlit as st
+import torch
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import time
+
+import tempfile
+
+# Import local modules
+from data_loader import PEMSBAYDataLoader
+from st_gnn import STGNN
+try:
+    from video_utils import process_video_for_traffic_speed
+except ImportError:
+    # Handle case where video_utils might not be ready or cv2 missing
+    def process_video_for_traffic_speed(*args, **kwargs):
+        st.error("Video utilities not found. Install opencv-python.")
+        return np.zeros(12)
+
+# --- Configuration ---
+st.set_page_config(
+    page_title="Traffic Flow Prediction",
+    page_icon="🚗",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Constants
+DATA_DIR = r"E:\deeplearning project\dataset"
+MODEL_PATH = "best_st_gnn.pth"
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# --- Helper Functions ---
+
+@st.cache_resource
+def load_data():
+    """Load data and cache it to avoid reloading on every interaction"""
+    with st.spinner("Loading PEMS-BAY dataset..."):
+        loader = PEMSBAYDataLoader(
+            data_dir=DATA_DIR,
+            seq_len=12,
+            pred_len=12,
+            train_ratio=0.7,
+            val_ratio=0.1
+        )
+        # Get dataloaders
+        _, _, test_loader = loader.get_dataloaders(batch_size=32, shuffle=False)
+        return loader, test_loader
+
+@st.cache_resource
+def load_model(num_nodes, hidden_channels=64, num_layers=3):
+    """Load model and cache it"""
+    with st.spinner("Loading ST-GNN Model..."):
+        model = STGNN(
+            num_nodes=num_nodes,
+            in_channels=1,
+            hidden_channels=hidden_channels,
+            out_channels=1,
+            num_layers=num_layers,
+            pred_len=12
+        )
+        
+        if os.path.exists(MODEL_PATH):
+            checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            model = model.to(DEVICE)
+            model.eval()
+            return model, checkpoint.get('epoch', 0), checkpoint.get('val_loss', 0.0)
+        else:
+            return None, 0, 0.0
+
+def make_predictions(model, test_loader, adj_mx, num_batches=1):
+    """Run inference on a few batches"""
+    model.eval()
+    adj_mx = adj_mx.to(DEVICE)
+    
+    all_preds = []
+    all_targets = []
+    all_inputs = []
+    
+    with torch.no_grad():
+        for i, (batch_x, batch_y) in enumerate(test_loader):
+            if i >= num_batches:
+                break
+            
+            batch_x = batch_x.to(DEVICE)
+            
+            preds = model(batch_x, adj_mx)
+            
+            all_inputs.append(batch_x.cpu().numpy())
+            all_preds.append(preds.cpu().numpy())
+            all_targets.append(batch_y.numpy())
+            
+    return np.concatenate(all_inputs), np.concatenate(all_preds), np.concatenate(all_targets)
+
+# --- Main UI ---
+
+def main():
+    st.title("🚦 Traffic Flow Prediction Dashboard")
+    st.markdown("### Spatio-Temporal Graph Neural Network (ST-GNN)")
+    
+    # Sidebar
+    st.sidebar.header("Configuration")
+    st.sidebar.markdown(f"**Device:** `{DEVICE}`")
+    
+    # Load resources
+    try:
+        data_loader, test_loader = load_data()
+        st.sidebar.success("Dataset loaded!")
+        
+        model, epoch, val_loss = load_model(data_loader.num_nodes)
+        
+        if model:
+            st.sidebar.success(f"Model loaded (Epoch {epoch+1})")
+            st.sidebar.info(f"Best Val Loss: {val_loss:.4f}")
+        else:
+            st.error(f"Model not found at {MODEL_PATH}. Please train the model first.")
+            return
+
+    except Exception as e:
+        st.error(f"Error loading resources: {str(e)}")
+        return
+
+    # Tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Dashboard", "🔮 Predictions", "📉 Error Analysis", "🕸️ Spatial Graph", "🎥 Video Analysis"])
+    
+    # --- Tab 1: Dashboard ---
+    with tab1:
+        st.markdown("#### Model Performance Overview")
+        
+        # Run inference on subset for metrics
+        if st.button("Run Evaluation on Test Set"):
+            with st.spinner("Calculating metrics..."):
+                inputs, preds, targets = make_predictions(model, test_loader, data_loader.adj_mx, num_batches=5)
+                
+                # Inverse transform
+                # Note: This assumes simple scaling was done. Adjust if scaler logic is complex.
+                # Data shape: (batch, time, nodes) -> reshape for scaler -> (N, 1) -> reshape back
+                
+                # Flatten for scaling - Reshape to (N, num_nodes) to match scaler
+                preds_reshaped = preds.reshape(-1, data_loader.num_nodes)
+                targets_reshaped = targets.reshape(-1, data_loader.num_nodes)
+                
+                # Inverse transform
+                preds_real = data_loader.scaler.inverse_transform(preds_reshaped).flatten()
+                targets_real = data_loader.scaler.inverse_transform(targets_reshaped).flatten()
+                
+                # Calculate metrics
+                mae = np.mean(np.abs(preds_real - targets_real))
+                rmse = np.sqrt(np.mean((preds_real - targets_real)**2))
+                mape = np.mean(np.abs((targets_real - preds_real) / (targets_real + 1e-5))) * 100
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("MAE (Speed)", f"{mae:.2f}")
+                col2.metric("RMSE (Speed)", f"{rmse:.2f}")
+                col3.metric("MAPE", f"{mape:.2f}%")
+                
+                st.success("Metrics calculated on real traffic speeds (unscaled).")
+
+        st.divider()
+        st.markdown("#### Dataset Statistics")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Sensors", data_loader.num_nodes)
+        col2.metric("Total Timesteps", data_loader.num_timesteps)
+        col3.metric("Sequence Length", data_loader.seq_len)
+        col4.metric("Prediction Horizon", data_loader.pred_len)
+
+    # --- Tab 2: Predictions ---
+    with tab2:
+        st.markdown("#### Traffic Speed Forecast")
+        
+        if st.button("Generate Random Prediction"):
+            inputs, preds, targets = make_predictions(model, test_loader, data_loader.adj_mx, num_batches=1)
+            
+            # Pick a random sample and sensor
+            sample_idx = np.random.randint(0, len(inputs))
+            sensor_idx = np.random.randint(0, data_loader.num_nodes)
+            
+            # Get data
+            input_seq = inputs[sample_idx, :, sensor_idx]
+            target_seq = targets[sample_idx, :, sensor_idx]
+            pred_seq = preds[sample_idx, :, sensor_idx]
+            
+            # Inverse transform just this series manually using scaler parameters
+            # scaler.mean_ and scaler.scale_ are shape (num_nodes,)
+            # We must use manual math because standard scaler expects a full batch
+            mean = data_loader.scaler.mean_[sensor_idx]
+            scale = data_loader.scaler.scale_[sensor_idx]
+            
+            # Formula: original = scaled * variance + mean
+            input_real = input_seq * scale + mean
+            target_real = target_seq * scale + mean
+            pred_real = pred_seq * scale + mean
+            
+            # Plot
+            fig, ax = plt.subplots(figsize=(10, 4))
+            
+            # Timeline
+            t_input = np.arange(len(input_real))
+            t_pred = np.arange(len(input_real), len(input_real) + len(target_real))
+            
+            ax.plot(t_input, input_real, 'b-', label='History (Past 1 Hour)')
+            ax.plot(t_pred, target_real, 'g-', label='Ground Truth')
+            ax.plot(t_pred, pred_real, 'r--', label='Prediction')
+            
+            ax.set_title(f"Traffic Speed Prediction - Sensor {sensor_idx}")
+            ax.set_xlabel("Time (5-min intervals)")
+            ax.set_ylabel("Speed (mph)")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            
+            st.pyplot(fig)
+            
+            # Data Table
+            df_res = pd.DataFrame({
+                "Step": np.arange(1, 13),
+                "Ground Truth (mph)": target_real,
+                "Prediction (mph)": pred_real,
+                "Error": np.abs(target_real - pred_real)
+            })
+            st.dataframe(df_res.style.highlight_max(axis=0, color='lightcoral'))
+
+    # --- Tab 3: Error Analysis ---
+    with tab3:
+        st.markdown("#### Error By Prediction Horizon")
+        if st.checkbox("Run Horizon Analysis"):
+            with st.spinner("Analyzing error over time steps..."):
+                inputs, preds, targets = make_predictions(model, test_loader, data_loader.adj_mx, num_batches=10)
+                
+                # Inverse transform
+                # Reshape to (Batch*Pred_len, Nodes)
+                preds_reshaped = preds.reshape(-1, data_loader.num_nodes)
+                targets_reshaped = targets.reshape(-1, data_loader.num_nodes)
+                
+                preds_real = data_loader.scaler.inverse_transform(preds_reshaped)
+                targets_real = data_loader.scaler.inverse_transform(targets_reshaped)
+                
+                preds_real = preds_real.reshape(preds.shape) # (Batch, Pred_len, Nodes)
+                targets_real = targets_real.reshape(targets.shape)
+                
+                # MAE per time step
+                errors = np.abs(preds_real - targets_real)
+                mae_by_step = np.mean(errors, axis=(0, 2)) # Average over batch and nodes
+                
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.plot(range(1, 13), mae_by_step, 'o-', linewidth=2, color='darkorange')
+                ax.set_xlabel("Prediction Horizon (Steps)")
+                ax.set_ylabel("Mean Absolute Error (mph)")
+                ax.set_title("Error Increases as we Predict Further into the Future")
+                ax.grid(True)
+                st.pyplot(fig)
+
+    # --- Tab 4: Spatial Graph ---
+    with tab4:
+        st.markdown("#### Sensor Network Topology")
+        
+        num_nodes_view = st.slider("Number of nodes to view", 10, 100, 50)
+        
+        adj_np = data_loader.adj_mx.cpu().numpy()
+        adj_sub = adj_np[:num_nodes_view, :num_nodes_view]
+        
+        fig, ax = plt.subplots(figsize=(8, 8))
+        sns.heatmap(adj_sub, cmap="YlGnBu", ax=ax, cbar=False)
+        ax.set_title(f"Adjacency Matrix (First {num_nodes_view} Sensors)")
+        st.pyplot(fig)
+
+    # --- Tab 5: Video Analysis ---
+    with tab5:
+        st.markdown("#### Predict Traffic From Video")
+        st.info("Upload a traffic video to extract speed patterns and predict future flow.")
+        
+        uploaded_file = st.file_uploader("Upload Traffic Video (MP4, AVI)", type=['mp4', 'avi', 'mov'])
+        
+        # Sensor selection for mapping
+        selected_sensor_id = st.number_input("Map Video to Sensor ID", min_value=0, max_value=data_loader.num_nodes-1, value=0)
+        
+        if uploaded_file is not None:
+            # Save to temp file
+            # Windows requires the file to be closed before another process (opencv) uses it
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile: 
+                    tfile.write(uploaded_file.read())
+                    temp_filename = tfile.name
+            except Exception as e:
+                st.error(f"Error saving video file: {e}")
+                temp_filename = None
+
+            if temp_filename:
+                col_v1, col_v2 = st.columns([1, 1])
+                with col_v1:
+                    st.video(uploaded_file)
+                    st.caption("Uploaded Video")
+                
+                if st.button("Analyze Video & Predict"):
+                    try:
+                        with st.spinner("Processing video (Optical Flow)..."):
+                            # 1. Extract speed signal
+                            # This uses our helper function to get 12 data points representing speed
+                            speed_signal = process_video_for_traffic_speed(temp_filename, target_seq_len=data_loader.seq_len)
+                            
+                            # 2. Prepare Input for the AI Model
+                            # The model expects a graph of 325 sensors. We only have video for ONE.
+                            # So, we take a "standard" background batch from the test set
+                            # and REPLACE the data for our selected sensor with the video data.
+                            
+                            # Get background batch (unscaled/random sample)
+                            sample_x_scaled, sample_y_scaled = next(iter(test_loader))
+                            
+                            # Clone to avoid modifying original data
+                            input_batch = sample_x_scaled[0:1].clone() # Shape: (1, 12, Nodes)
+                            
+                            # 3. Scale the Video Data
+                            # The model works with normalized data (mean=0, std=1).
+                            # Our video data is in "mph". We must scale it to match the model's expected format.
+                            mean = data_loader.scaler.mean_[selected_sensor_id]
+                            scale = data_loader.scaler.scale_[selected_sensor_id]
+                            
+                            speed_signal_scaled = (speed_signal - mean) / scale
+                            speed_signal_tensor = torch.FloatTensor(speed_signal_scaled).to(DEVICE)
+                            
+                            # Replace the selected sensor's history with our video data
+                            input_batch[0, :, selected_sensor_id] = speed_signal_tensor
+                            
+                            # 4. Run Prediction
+                            adj_mx = data_loader.adj_mx.to(DEVICE)
+                            input_batch = input_batch.to(DEVICE)
+                            
+                            with torch.no_grad():
+                                model.eval()
+                                prediction_scaled = model(input_batch, adj_mx) # Returns (1, 12, Nodes)
+                            
+                            # 5. Extract Result
+                            # Get the predicted 12 future steps for our specific sensor
+                            pred_seq_scaled = prediction_scaled[0, :, selected_sensor_id].cpu().numpy()
+                            
+                            # Convert back to real MPH (Unscale)
+                            pred_seq_real = pred_seq_scaled * scale + mean
+                            
+                            # 5. Visualize
+                            with col_v2: 
+                                fig_v, ax_v = plt.subplots(figsize=(10, 4))
+                                t_hist = np.arange(len(speed_signal))
+                                t_pred = np.arange(len(speed_signal), len(speed_signal) + len(pred_seq_real))
+                                
+                                ax_v.plot(t_hist, speed_signal, 'b-', label='Video Extracted Speed (Past)', linewidth=2)
+                                ax_v.plot(t_pred, pred_seq_real, 'r--', label='Predicted Speed (Future)', linewidth=2)
+                                
+                                ax_v.set_title(f"Prediction for Sensor {selected_sensor_id} based on Video")
+                                ax_v.set_xlabel("Time Step (5-min intervals)")
+                                ax_v.set_ylabel("Speed (mph)")
+                                ax_v.legend()
+                                ax_v.grid(True, alpha=0.3)
+                                st.pyplot(fig_v)
+                                
+                                st.success("Prediction Complete!")
+                                
+                                # Data table
+                                df_v = pd.DataFrame({
+                                    "Future Step": range(1, 13),
+                                    "Predicted Speed": pred_seq_real
+                                })
+                                st.dataframe(df_v)
+                    finally:
+                        # Cleanup temp file
+                        try:
+                            os.remove(temp_filename)
+                        except:
+                            pass
+
+if __name__ == "__main__":
+    main()

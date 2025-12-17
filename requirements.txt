@@ -1,0 +1,9 @@
+numpy
+pandas
+h5py
+torch
+matplotlib
+seaborn
+scikit-learn
+streamlit
+opencv-python
