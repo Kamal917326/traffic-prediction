@@ -64,6 +64,10 @@ streamlit run app.py
   streamlit run app.py --server.port 8502
   ```
 - **Video Library Error**: If you see an error about `cv2`, run `pip install opencv-python`.
+- **Command Not Found**: If `streamlit` is not recognized, try running it as a Python module:
+  ```bash
+  python -m streamlit run app.py
+  ```
 
 ## 4. Expected Output
 

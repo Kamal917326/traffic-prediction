@@ -149,12 +149,17 @@ class Trainer:
         """
         Full training loop
         
+        1. Iterates through epochs
+        2. Trains the model (updates weights)
+        3. Validates the model (checks performance on unseen data)
+        4. Saves the best model based on validation loss
+        
         Args:
-            epochs: Number of training epochs
-            train_loader: Training data loader
-            val_loader: Validation data loader
-            adj_mx: Adjacency matrix
-            save_path: Path to save best model
+            epochs: Number of training epochs (passes through the entire dataset)
+            train_loader: DataLoader for training data
+            val_loader: DataLoader for validation data
+            adj_mx: Adjacency matrix (graph structure)
+            save_path: File path to save the best model weights
         """
         print(f"\nStarting training for {epochs} epochs...")
         print(f"Device: {self.device}")
@@ -165,23 +170,30 @@ class Trainer:
         for epoch in range(epochs):
             epoch_start = time.time()
             
-            # Train
+            # --- TRAIN STEP ---
+            # Updates model weights using backpropagation
             train_loss = self.train_epoch(train_loader, adj_mx)
             
-            # Validate
+            # --- VALIDATION STEP ---
+            # Evaluates model on data it hasn't seen during training
+            # Used to tune hyperparameters and prevent overfitting
             val_loss, val_mae, val_rmse, val_mape = self.validate(val_loader, adj_mx)
             
-            # Update learning rate
+            # --- SCHEDULER UPDATE ---
+            # Reduces learning rate if validation loss stops improving
+            # This helps the model converge to a better solution
             self.scheduler.step(val_loss)
             
-            # Save history
+            # Save history for plotting
             self.history['train_loss'].append(train_loss)
             self.history['val_loss'].append(val_loss)
             self.history['val_mae'].append(val_mae)
             self.history['val_rmse'].append(val_rmse)
             self.history['val_mape'].append(val_mape)
             
-            # Save best model
+            # --- MODEL CHECKPOINTING ---
+            # We save the model only if the current validation loss is lower than the best seen so far.
+            # This ensures we keep the "best" version of the model, not just the last one.
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
                 torch.save({
@@ -210,32 +222,84 @@ class Trainer:
     
     def test(self, test_loader, adj_mx, model_path='best_model.pth'):
         """
-        Test the model on test set
-        
-        Args:
-            test_loader: Test data loader
-            adj_mx: Adjacency matrix
-            model_path: Path to saved model
-        
-        Returns:
-            test_loss, test_mae, test_rmse, test_mape
+        Test the model on test set and print horizon-specific metrics
         """
         print("\nTesting model...")
         
         # Load best model
         checkpoint = torch.load(model_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.eval()
         
-        # Evaluate
-        test_loss, test_mae, test_rmse, test_mape = self.validate(test_loader, adj_mx)
+        all_preds = []
+        all_targets = []
         
-        print(f"\n=== Test Results ===")
-        print(f"Test Loss: {test_loss:.4f}")
-        print(f"Test MAE:  {test_mae:.4f}")
-        print(f"Test RMSE: {test_rmse:.4f}")
-        print(f"Test MAPE: {test_mape:.2f}%")
+        adj_mx = adj_mx.to(self.device)
         
-        return test_loss, test_mae, test_rmse, test_mape
+        with torch.no_grad():
+            for batch_x, batch_y in test_loader:
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                
+                # Forward pass
+                predictions = self.model(batch_x, adj_mx)
+                
+                all_preds.append(predictions.cpu())
+                all_targets.append(batch_y.cpu())
+        
+        # Concatenate
+        all_preds = torch.cat(all_preds, dim=0)
+        all_targets = torch.cat(all_targets, dim=0)
+        
+        # Horizons to evaluate (indices assuming 5min steps)
+        # 5min: step 1 (idx 0), 15min: step 3 (idx 2), 30min: step 6 (idx 5), 60min: step 12 (idx 11)
+        horizons = [0, 2, 5, 11]
+        metrics_results = {'MAE': [], 'RMSE': [], 'MAPE': []}
+        
+        for h in horizons:
+            if h < all_preds.shape[1]:
+                pred_h = all_preds[:, h, :]
+                target_h = all_targets[:, h, :]
+                mae, rmse, mape = compute_metrics(pred_h, target_h)
+                metrics_results['MAE'].append(mae)
+                metrics_results['RMSE'].append(rmse)
+                metrics_results['MAPE'].append(mape)
+            else:
+                for k in metrics_results:
+                    metrics_results[k].append(0.0)
+        
+        # Print table
+        print("\n" + "="*65)
+        print(f"{'Dataset':<10} {'Metric':<8} {'5min':<10} {'15min':<10} {'30min':<10} {'60min':<10}")
+        print("-" * 65)
+        
+        # MAE
+        mae_vals = metrics_results['MAE']
+        print(f"{'PEMS-BAY':<10} {'MAE':<8} {mae_vals[0]:<10.2f} {mae_vals[1]:<10.2f} {mae_vals[2]:<10.2f} {mae_vals[3]:<10.2f}")
+        
+        # MAPE
+        mape_vals = metrics_results['MAPE']
+        print(f"{'':<10} {'MAPE':<8} {mape_vals[0]:<9.2f}% {mape_vals[1]:<9.2f}% {mape_vals[2]:<9.2f}% {mape_vals[3]:<9.2f}%")
+        
+        # RMSE
+        rmse_vals = metrics_results['RMSE']
+        print(f"{'':<10} {'RMSE':<8} {rmse_vals[0]:<10.2f} {rmse_vals[1]:<10.2f} {rmse_vals[2]:<10.2f} {rmse_vals[3]:<10.2f}")
+        
+        print("="*65 + "\n")
+        
+        # Save metrics to JSON for UI
+        import json
+        metrics_data = {
+            "MAE": metrics_results['MAE'],
+            "RMSE": metrics_results['RMSE'],
+            "MAPE": metrics_results['MAPE']
+        }
+        with open('metrics.json', 'w') as f:
+            json.dump(metrics_data, f)
+        print(f"Metrics saved to metrics.json")
+
+        # Return overall metrics
+        return compute_metrics(all_preds, all_targets)
     
     def plot_training_history(self, save_path='training_history.png'):
         """Plot training curves"""
@@ -352,3 +416,4 @@ if __name__ == "__main__":
     trainer.test(test_loader, data_loader.adj_mx, 'best_st_gnn.pth')
     
     print("\n✓ All done!")
+    # Force update timestamp

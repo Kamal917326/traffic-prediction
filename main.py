@@ -27,7 +27,7 @@ def main(args):
     
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"\n📱 Device: {device}")
+    print(f"\n Device: {device}")
     
     if torch.cuda.is_available():
         print(f"   GPU: {torch.cuda.get_device_name(0)}")
@@ -53,7 +53,7 @@ def main(args):
         shuffle=True
     )
     
-    print(f"\n✓ Data loaded successfully")
+    print(f"\n Data loaded successfully")
     print(f"   Nodes (sensors): {data_loader.num_nodes}")
     print(f"   Total timesteps: {data_loader.num_timesteps}")
     print(f"   Training samples: {len(train_loader.dataset)}")
@@ -76,7 +76,7 @@ def main(args):
         pred_len=args.pred_len
     )
     
-    print(f"\n✓ Model created")
+    print(f"\n  Model created")
     print(f"   Architecture: ST-GNN")
     print(f"   Hidden channels: {args.hidden_channels}")
     print(f"   Number of layers: {args.num_layers}")
@@ -122,7 +122,7 @@ def main(args):
         )
         
     else:
-        print("\n⏭️  Skipping training (loading pre-trained model)...")
+        print("\n Skipping training (loading pre-trained model)...")
     
     # =====================================================================
     # STEP 4: Visualization and Analysis
@@ -151,13 +151,13 @@ def main(args):
     # Summary
     # =====================================================================
     print("\n" + "="*70)
-    print("PIPELINE COMPLETE ✓")
+    print("PIPELINE COMPLETE  ")
     print("="*70)
     
     print("\n📂 Generated Files:")
     if not args.skip_training:
-        print(f"   ✓ {args.model_save_path} - Trained model")
-        print(f"   ✓ {args.training_curves_path} - Training curves")
+        print(f"     {args.model_save_path} - Trained model")
+        print(f"     {args.training_curves_path} - Training curves")
     
     print("\n" + "="*70)
     print("All done!")
