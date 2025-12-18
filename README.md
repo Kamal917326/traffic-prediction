@@ -1,267 +1,136 @@
-# Traffic Flow Prediction using Spatio-Temporal Graph Neural Networks
+# 🚦 Traffic Flow Prediction using ST-GNN
 
-A PyTorch implementation of a Spatio-Temporal Graph Neural Network (ST-GNN) for traffic flow prediction on the PEMS-BAY dataset.
+## Overview
 
-## 📋 Project Overview
+This project implements a **Spatio-Temporal Graph Neural Network (ST-GNN)** to predict traffic speeds on the PEMS-BAY dataset. It leverages the graph structure of road networks and historical time-series data to forecast future traffic conditions with high accuracy.
 
-This project implements a state-of-the-art GNN model that:
-- **Captures spatial dependencies** between connected road sensors using Graph Convolution
-- **Models temporal patterns** using Temporal Convolutional Networks with dilated convolutions
-- **Predicts future traffic conditions** (speed/flow) for multiple time steps ahead
+The system includes a complete pipeline for training, evaluation, and an interactive **Streamlit Dashboard** for visualization and real-time analysis.
 
-## 🏗️ Architecture
+## 🌟 Key Features
 
-**Spatio-Temporal GNN (ST-GNN)**
-- **Graph Convolution Layer**: Learns how traffic propagates through the road network
-- **Temporal Convolutional Network**: Captures traffic dynamics over time with dilated causal convolutions
-- **Multi-layer Spatio-Temporal Blocks**: Combines spatial and temporal learning
-- **Multi-step Prediction**: Forecasts traffic for next 12 time steps (1 hour)
+-   **Deep Learning Model**: Custom ST-GNN architecture combining Graph Convolutional Networks (GCN) and Gated Recurrent Units (GRU).
+-   **Multi-Horizon Forecasting**: Predicts traffic speeds for **5, 15, 30, and 60 minutes** into the future.
+-   **Performance Metrics**: Detailed evaluation providing MAE, RMSE, and MAPE for each prediction horizon.
+-   **Interactive Dashboard**:
+    -   **📊 Dashboard**: View overall model performance metrics in a clear, formatted table.
+    -   **💾 Dataset Viewer**: Explore raw traffic data with generated timestamps.
+    -   **🔮 Predictions**: Visualize forecasts vs. ground truth for specific sensors.
+    -   **📉 Error Analysis**: Analyze how prediction error grows over time.
+    -   **🕸️ Spatial Graph**: Visualize the sensor adjacency matrix.
+    -   **🎥 Video Analysis**: Upload traffic videos to extract speed signals and predict future flow.
 
-## 📊 Dataset
+## 🛠️ Tech Stack
 
-**PEMS-BAY** - Bay Area traffic data
-- 325 sensors (nodes in the graph)
-- 5-minute intervals
-- Traffic speed measurements
-- Adjacency matrix (road connectivity)
+-   **Python 3.8+**
+-   **PyTorch**: Deep learning framework.
+-   **PyTorch Geometric**: Graph neural network layers.
+-   **Streamlit**: Web interface for the dashboard.
+-   **Pandas & NumPy**: Data manipulation.
+-   **Matplotlib & Seaborn**: Visualization.
+-   **OpenCV**: Video processing.
 
-Your dataset files:
-```
-data/
-├── pems-bay.h5          # Traffic speed data
-├── pems-bay-meta.h5     # Metadata
-└── adj_mx_bay.pkl       # Adjacency matrix (graph structure)
-```
+---
 
-## 🚀 Quick Start
+## 🚀 Installation & Setup
 
-### 1. Install Dependencies
+1.  **Clone the Repository**
+    ```bash
+    git clone <your-repo-url>
+    cd <repo-name>
+    ```
 
-```bash
-pip install -r requirements.txt
-```
+2.  **Create a Virtual Environment (Recommended)**
+    ```bash
+    python -m venv .venv
+    # Windows
+    .venv\Scripts\activate
+    # Mac/Linux
+    source .venv/bin/activate
+    ```
 
-### 2. Prepare Your Data
+3.  **Install Dependencies**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-Make sure your data is in the correct folder:
-```
-E:/sonia (E_)/roehampton university/sem 2/data science/data visulization data/
-```
+4.  **Dataset Setup**
+    Ensure the PEMS-BAY dataset files are in the `dataset/` directory:
+    -   `dataset/pems-bay.h5`
+    -   `dataset/adj_mx_bay.pkl`
 
-Or update the `DATA_DIR` path in the scripts.
+---
 
-### 3. Train the Model
+## 🏃‍♂️ Usage
+
+### 1. Training the Model
+To train the ST-GNN model from scratch:
 
 ```bash
 python train.py
 ```
 
-This will:
-- Load and preprocess PEMS-BAY data
-- Create train/validation/test splits (70/10/20)
-- Train the ST-GNN model for 50 epochs
-- Save the best model to `best_st_gnn.pth`
-- Generate training curves in `training_curves.png`
+-   The script will train for the configured number of epochs.
+-   It will save the best model weights to `best_st_gnn.pth`.
+-   **New**: At the end of training, it generates a `metrics.json` file containing the detailed performance table.
 
-**Training Configuration:**
-- Sequence length: 12 steps (1 hour input)
-- Prediction length: 12 steps (1 hour ahead)
-- Batch size: 32
-- Hidden channels: 64
-- Number of layers: 3
-- Learning rate: 0.001
-
-### 4. Visualize Results
+### 2. Running the Dashboard
+To launch the interactive user interface:
 
 ```bash
-python visualize.py
+streamlit run app.py
 ```
 
-This generates:
-- `predictions.png` - Prediction vs ground truth for sample sensors
-- `error_distribution.png` - Error histogram and box plot
-- `spatial_graph.png` - Adjacency matrix heatmap
-- `error_by_time.png` - How error increases over prediction horizon
-
-## 📁 Project Structure
-
-```
-traffic-gnn-project/
-│
-├── data_loader.py       # Data loading and preprocessing
-├── st_gnn.py           # ST-GNN model architecture
-├── train.py            # Training pipeline
-├── visualize.py        # Visualization and analysis
-├── requirements.txt    # Python dependencies
-└── README.md          # This file
-│
-├── best_st_gnn.pth     # Saved best model (after training)
-├── training_curves.png # Training history plots
-└── predictions.png     # Visualization outputs
-```
-
-## 🔬 Model Components
-
-### 1. Graph Convolution Layer
-```python
-GraphConvolution(in_features, out_features)
-```
-- Learns spatial dependencies between connected road sensors
-- Uses symmetric normalization: D^(-1/2) * A * D^(-1/2)
-
-### 2. Temporal Convolutional Network
-```python
-TemporalConvNet(in_channels, out_channels, kernel_size, dilation)
-```
-- Dilated causal convolutions (only looks at past, not future)
-- Exponentially increasing dilation rates (1, 2, 4, 8...)
-- Captures both short-term and long-term temporal patterns
-
-### 3. Spatio-Temporal Block
-```python
-SpatioTemporalBlock(in_channels, out_channels, num_nodes)
-```
-- Combines graph convolution + temporal convolution
-- Residual connections for better gradient flow
-- Layer normalization for training stability
-
-### 4. Full ST-GNN Model
-```python
-STGNN(num_nodes, hidden_channels, num_layers, pred_len)
-```
-- Stacks multiple ST blocks with increasing dilation
-- Multi-step prediction head
-- ~500K trainable parameters
-
-## 📊 Evaluation Metrics
-
-The model is evaluated using:
-- **MAE** (Mean Absolute Error) - Average prediction error
-- **RMSE** (Root Mean Squared Error) - Penalizes large errors
-- **MAPE** (Mean Absolute Percentage Error) - Relative error
-
-## 🎯 Expected Results
-
-Based on the PEMS-BAY benchmark:
-- **MAE**: ~1.5-2.0 (normalized scale)
-- **RMSE**: ~3.0-4.0
-- **MAPE**: ~3-5%
-
-Results will vary based on:
-- Number of training epochs
-- Model complexity (layers, hidden channels)
-- Hyperparameter tuning
-
-## 🔧 Customization
-
-### Change Prediction Horizon
-
-In `train.py`:
-```python
-PRED_LEN = 6  # Predict 30 minutes ahead (6 × 5 min)
-```
-
-### Adjust Model Size
-
-```python
-HIDDEN_CHANNELS = 128  # Larger model
-NUM_LAYERS = 4         # Deeper network
-```
-
-### Modify Training
-
-```python
-EPOCHS = 100           # Train longer
-BATCH_SIZE = 64        # Larger batches
-LEARNING_RATE = 0.0005 # Fine-tune learning rate
-```
-
-## 📈 Understanding the Results
-
-### 1. Training Curves
-- **Train vs Val Loss**: Check for overfitting (val loss increasing)
-- **MAE/RMSE/MAPE**: Lower is better
-- Convergence typically happens around epoch 30-40
-
-### 2. Prediction Visualization
-- Blue line: Input sequence (what model sees)
-- Green line: Ground truth future
-- Red dashed: Model prediction
-- Good predictions closely follow ground truth
-
-### 3. Error Analysis
-- Error increases with prediction horizon (expected)
-- First few steps: lowest error
-- Later steps: higher uncertainty
-
-### 4. Spatial Graph
-- Shows which roads are connected
-- Denser connections = more spatial correlation
-- Model learns to propagate traffic information through these connections
-
-## 🎓 For Your Project Report
-
-### Key Points to Highlight:
-
-1. **Problem Statement**
-   - Multi-node, multi-step traffic forecasting
-   - Both spatial (road network) and temporal (time series) dependencies
-
-2. **Why GNN?**
-   - Roads are naturally a graph structure
-   - Traditional methods treat sensors independently (wrong assumption)
-   - GNN models traffic as a connected system (realistic)
-
-3. **Architecture Decisions**
-   - Graph convolution: Captures spatial propagation
-   - Dilated temporal CNN: Captures long-range temporal patterns
-   - Combined: Learns spatio-temporal patterns jointly
-
-4. **Results Interpretation**
-   - Compare with baselines (Historical Average, LSTM)
-   - Show that spatial modeling improves accuracy
-   - Analyze error patterns (by time, by location, by traffic condition)
-
-5. **Future Work**
-   - Incorporate external features (weather, events)
-   - Attention mechanisms
-   - Adaptive graph learning
-
-## 🐛 Troubleshooting
-
-### Out of Memory Error
-- Reduce `BATCH_SIZE` to 16 or 8
-- Reduce `HIDDEN_CHANNELS` to 32
-- Reduce `NUM_LAYERS` to 2
-
-### Data Loading Issues
-- Check file paths are correct
-- Verify H5 file structure: `h5py.File('pems-bay.h5', 'r').keys()`
-- Ensure pickle file can be loaded
-
-### Slow Training
-- Use GPU if available (automatic in code)
-- Reduce sequence length or prediction length
-- Use fewer ST blocks
-
-## 📚 References
-
-1. **DCRNN** (ICLR 2018): Diffusion Convolutional Recurrent Neural Network
-2. **Graph WaveNet** (IJCAI 2019): Adaptive Graph Convolution + Dilated CNN
-3. **GMAN** (AAAI 2020): Graph Multi-Attention Network
-
-## 💡 Tips for Success
-
-1. **Start Small**: Train for 10 epochs first to verify everything works
-2. **Monitor Training**: Watch for overfitting (val loss increasing)
-3. **Visualize Early**: Check predictions after 5-10 epochs
-4. **Compare Baselines**: Run simple LSTM to show GNN improvement
-5. **Document Everything**: Save plots, metrics, and model checkpoints
-
-## ✨ Good Luck!
-
-You now have a complete, working ST-GNN implementation for traffic prediction. The code is modular, well-documented, and ready to run. Focus on understanding the results and explaining why the model works!
+-   Open the provided URL (usually `http://localhost:8501`) in your browser.
+-   Use the sidebar to view configuration info.
+-   Navigate through the tabs to explore data and predictions.
 
 ---
 
-**Contact**: If you need help, check the code comments or refer to the original papers.
+## ❓ Troubleshooting
+
+If you encounter issues, check these common solutions:
+
+### ❌ Error: "Model not found at best_st_gnn.pth"
+-   **Reason**: You haven't trained the model yet.
+-   **Fix**: Run `python train.py` first. This will generate the `.pth` file required by the dashboard.
+
+### ❌ Error: "No training metrics found"
+-   **Reason**: The dashboard looks for `metrics.json`, which is created at the *end* of training.
+-   **Fix**: Ensure `train.py` completes fully. If you interrupted it, run it again or click "Run Live Evaluation" in the dashboard to generate metrics on the fly.
+
+### ❌ Error: "Video utilities not found"
+-   **Reason**: OpenCV might be missing or corrupted.
+-   **Fix**: Run `pip install opencv-python`.
+
+### ❌ Error regarding "dataset path" or "FileNotFoundError"
+-   **Reason**: The script cannot find `pems-bay.h5`.
+-   **Fix**:
+    1.  Check the `DATA_DIR` variable in `data_loader.py` and `app.py`.
+    2.  Ensure your folder structure looks like this:
+        ```
+        project_root/
+        ├── app.py
+        ├── train.py
+        └── dataset/
+            ├── pems-bay.h5
+            └── adj_mx_bay.pkl
+        ```
+
+### ❌ CUDA / GPU Out of Memory
+-   **Reason**: The batch size might be too large for your GPU.
+-   **Fix**: Open `train.py` and reduce `batch_size` (e.g., from 64 to 32 or 16).
+    ```python
+    # In train.py
+    train_loader, val_loader, test_loader = loader.get_dataloaders(batch_size=16)
+    ```
+
+---
+
+## 📂 Project Structure
+
+-   `train.py`: Main script for training and evaluating the model.
+-   `app.py`: Streamlit application code.
+-   `st_gnn.py`: Definition of the Spatio-Temporal Graph Neural Network class.
+-   `data_loader.py`: Handles loading and preprocessing of PEMS-BAY data.
+-   `video_utils.py`: Helper functions for processing video input.
+-   `metrics.json`: Stores model performance data for the UI.
