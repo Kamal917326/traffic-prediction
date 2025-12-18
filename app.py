@@ -126,7 +126,7 @@ def main():
         return
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Dashboard", "🔮 Predictions", "📉 Error Analysis", "🕸️ Spatial Graph", "🎥 Video Analysis"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Dashboard", "💾 Dataset Viewer", "🔮 Predictions", "📉 Error Analysis", "🕸️ Spatial Graph", "🎥 Video Analysis"])
     
     # --- Tab 1: Dashboard ---
     with tab1:
@@ -197,8 +197,38 @@ def main():
         col3.metric("Sequence Length", data_loader.seq_len)
         col4.metric("Prediction Horizon", data_loader.pred_len)
 
-    # --- Tab 2: Predictions ---
+    # --- Tab 2: Dataset Viewer ---
     with tab2:
+        st.markdown("#### Raw Traffic Data")
+        st.caption("View the underlying traffic speed data collected from PEMS-BAY sensors.")
+        
+        # We access the raw data directly from the loader
+        # This data is (timesteps, sensors)
+        raw_data = data_loader.raw_data
+        
+        # Generate timestamps
+        # PEMS-BAY typically starts around Jan 1st 2018 with 5-minute intervals
+        timestamps = pd.date_range(
+            start='2018-01-01 00:00:00',
+            periods=raw_data.shape[0],
+            freq='5min'
+        )
+        
+        # Create DataFrame
+        # We'll just show the first 50 sensors to keep the browser happy if there are too many
+        num_sensors_to_show = min(50, data_loader.num_nodes)
+        
+        df_viewer = pd.DataFrame(
+            raw_data[:, :num_sensors_to_show],
+            index=timestamps,
+            columns=[f"sensor_{i}" for i in range(num_sensors_to_show)]
+        )
+        
+        st.dataframe(df_viewer, height=400)
+        st.info(f"Showing first {num_sensors_to_show} sensors out of {data_loader.num_nodes}.")
+
+    # --- Tab 3: Predictions ---
+    with tab3:
         st.markdown("#### Traffic Speed Forecast")
         
         if st.button("Generate Random Prediction"):
