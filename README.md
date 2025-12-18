@@ -54,11 +54,9 @@ The system includes a complete pipeline for training, evaluation, and an interac
     ```
 
 4.  **Dataset Setup**
-    The dataset is included in the repo but compressed.
-    -   **Unzip** `dataset/pems-bay.zip` to extract `pems-bay.h5`.
-    -   Ensure `dataset/` contains:
-        -   `pems-bay.h5`
-        -   `adj_mx_bay.pkl`
+    The dataset is compressed in `dataset/pems-bay.zip` to save space.
+    -   **Automatic**: The code will **automatically unzip** it for you the first time you run it.
+    -   **Manual**: Alternatively, you can unzip it manually if you prefer.
 
 ---
 
