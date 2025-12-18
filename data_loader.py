@@ -27,6 +27,22 @@ class PEMSBAYDataLoader:
         self.val_ratio = val_ratio
         self.subset_ratio = subset_ratio
         
+        self.subset_ratio = subset_ratio
+        
+        # Check and unzip data if needed
+        h5_path = os.path.join(self.data_dir, 'pems-bay.h5')
+        zip_path = os.path.join(self.data_dir, 'pems-bay.zip')
+        
+        if not os.path.exists(h5_path) and os.path.exists(zip_path):
+            print(f"Dataset not found at {h5_path}. Attempting to unzip from {zip_path}...")
+            try:
+                import zipfile
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(self.data_dir)
+                print("Unzip successful!")
+            except Exception as e:
+                print(f"Error unzipping dataset: {e}")
+        
         # Load data
         print("Loading PEMS-BAY dataset...")
         self.load_data()
