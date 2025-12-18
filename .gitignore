@@ -14,7 +14,9 @@ venv/
 *.pkl
 
 # Dataset
-dataset/
+dataset/*.h5
+!dataset/pems-bay.zip
+!dataset/adj_mx_bay.pkl
 
 # IDE
 .vscode/
