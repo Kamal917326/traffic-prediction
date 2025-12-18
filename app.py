@@ -282,8 +282,8 @@ def main():
             })
             st.dataframe(df_res.style.highlight_max(axis=0, color='lightcoral'))
 
-    # --- Tab 3: Error Analysis ---
-    with tab3:
+    # --- Tab 4: Error Analysis ---
+    with tab4:
         st.markdown("#### Error By Prediction Horizon")
         if st.checkbox("Run Horizon Analysis"):
             with st.spinner("Analyzing error over time steps..."):
@@ -312,8 +312,8 @@ def main():
                 ax.grid(True)
                 st.pyplot(fig)
 
-    # --- Tab 4: Spatial Graph ---
-    with tab4:
+    # --- Tab 5: Spatial Graph ---
+    with tab5:
         st.markdown("#### Sensor Network Topology")
         
         num_nodes_view = st.slider("Number of nodes to view", 10, 100, 50)
@@ -326,8 +326,8 @@ def main():
         ax.set_title(f"Adjacency Matrix (First {num_nodes_view} Sensors)")
         st.pyplot(fig)
 
-    # --- Tab 5: Video Analysis ---
-    with tab5:
+    # --- Tab 6: Video Analysis ---
+    with tab6:
         st.markdown("#### Predict Traffic From Video")
         st.info("Upload a traffic video to extract speed patterns and predict future flow.")
         
